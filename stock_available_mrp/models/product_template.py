@@ -1,37 +1,16 @@
-# -*- coding: utf-8 -*-
-# © 2014 Numérigraphe SARL
+# Copyright 2014 Numérigraphe SARL
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
-from openerp import models, fields, api
-from openerp.addons import decimal_precision as dp
+from odoo import models, api
 
 
 class ProductTemplate(models.Model):
     _inherit = 'product.template'
 
-    potential_qty = fields.Float(
-        compute='_get_potential_qty',
-        type='float',
-        digits_compute=dp.get_precision('Product Unit of Measure'),
-        string='Potential',
-        help="Quantity of this Product that could be produced using "
-             "the materials already at hand. "
-             "If the product has several variants, this will be the biggest "
-             "quantity that can be made for a any single variant.")
-
     @api.multi
-    @api.depends('potential_qty')
-    def _immediately_usable_qty(self):
-        """Add the potential quantity to the quantity available to promise.
-
-        This is the same implementation as for variants."""
-        super(ProductTemplate, self)._immediately_usable_qty()
-        for tmpl in self:
-            tmpl.immediately_usable_qty += tmpl.potential_qty
-
-    @api.multi
-    @api.depends('product_variant_ids.potential_qty')
-    def _get_potential_qty(self):
+    @api.depends('product_variant_ids.immediately_usable_qty',
+                 'product_variant_ids.potential_qty')
+    def _compute_available_quantities_dict(self):
         """Compute the potential as the max of all the variants's potential.
 
         We can't add the potential of variants: if they share components we
@@ -39,8 +18,18 @@ class ProductTemplate(models.Model):
         So we set the arbitrary rule that we can promise up to the biggest
         variant's potential.
         """
+        res = {}
         for tmpl in self:
             if not tmpl.product_variant_ids:
                 continue
-            tmpl.potential_qty = max(
+            # immediately_usable_qty of the product iincludes the potential
+            # we can't use it otherwise we overestimate.
+            avail = max(
+                [v.virtual_available for v in tmpl.product_variant_ids])
+            potential = max(
                 [v.potential_qty for v in tmpl.product_variant_ids])
+            res[tmpl.id] = {
+                'immediately_usable_qty': avail + potential,
+                'potential_qty': potential
+            }
+        return res
