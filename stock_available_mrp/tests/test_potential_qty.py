@@ -10,33 +10,42 @@ class TestPotentialQty(TransactionCase):
 
     def setUp(self):
         super(TestPotentialQty, self).setUp()
-
         self.product_model = self.env["product.product"]
         self.bom_model = self.env["mrp.bom"]
         self.bom_line_model = self.env["mrp.bom.line"]
         self.stock_quant_model = self.env["stock.quant"]
         self.config = self.env['ir.config_parameter']
-
+        self.location = self.env['stock.location']
+        # We need to compute parent_left and parent_right of the locations as 
+        # they are used to compute qty_available of the product.
+        self.location._parent_store_compute()
         self.setup_demo_data()
 
     def setup_demo_data(self):
         #  An interesting product (multi-line BoM, variants)
         self.tmpl = self.browse_ref(
-            'product.product_product_4_product_template')
+            'stock_available_mrp.mrp_product_product_4_product_template')
+
         #  First variant
-        self.var1 = self.browse_ref('product.product_product_4c')
+        self.var1 = self.browse_ref('stock_available_mrp.mrp_product_product_4c')
         #  Second variant
-        self.var2 = self.browse_ref('product.product_product_4')
+        self.var2 = self.browse_ref('stock_available_mrp.mrp_product_product_4')
         # Components that can be used to make the product
+
+        self.prod22 = self.env.ref('stock_available_mrp.mrp_product_product_22')
+        self.prod13 = self.env.ref('stock_available_mrp.mrp_product_product_13')
+        self.prod17 = self.env.ref('stock_available_mrp.mrp_product_product_17')
+        self.prod16 = self.env.ref('stock_available_mrp.mrp_product_product_16')
+
         component_ids = [
             # CPUa8
-            self.ref('product.product_product_23'),
+            self.prod22.id,
             # RAM-SR2
-            self.ref('product.product_product_14'),
+            self.prod13.id,
             # HDD SH-2 replaces RAM-SR2 through our demo phantom BoM
-            self.ref('product.product_product_18'),
+            self.prod17.id,
             # RAM-SR3
-            self.ref('product.product_product_15')]
+            self.prod16.id]
 
         # Zero-out the inventory of all variants and components
         for component_id in (
@@ -47,13 +56,9 @@ class TestPotentialQty(TransactionCase):
                  'location_id': self.ref('stock.stock_location_locations'),
                  'filter': 'product',
                  'product_id': component_id})
-            inventory.prepare_inventory()
-            inventory.reset_real_qty()
-            inventory.action_done()
 
         #  A product without a BoM
-        self.product_wo_bom = self.browse_ref('product.product_product_23')
-
+        self.product_wo_bom = self.prod22
         #  Record the initial quantity available for sale
         self.initial_usable_qties = {i.id: i.immediately_usable_qty
                                      for i in [self.tmpl,
@@ -68,14 +73,13 @@ class TestPotentialQty(TransactionCase):
     def create_inventory(self, product_id, qty, location_id=None):
         if location_id is None:
             location_id = self.wh_main.lot_stock_id.id
-
         inventory = self.env['stock.inventory'].create({
             'name': 'Test inventory',
             'location_id': location_id,
-            'filter': 'partial'
+            'filter': 'partial',
+            'exhausted': True
         })
-        inventory.prepare_inventory()
-
+        inventory.action_start()
         self.env['stock.inventory.line'].create({
             'inventory_id': inventory.id,
             'product_id': product_id,
@@ -127,11 +131,11 @@ class TestPotentialQty(TransactionCase):
              'company_id': chicago_id,
              'location_id': self.wh_ch.lot_stock_id.id,
              'filter': 'partial'})
-        inventory.prepare_inventory()
+        inventory.action_start()
         self.env['stock.inventory.line'].create(
             {'inventory_id': inventory.id,
              'company_id': chicago_id,
-             'product_id': self.ref('product.product_product_23'),
+             'product_id': self.prod22.id,
              'location_id': self.wh_ch.lot_stock_id.id,
              'product_qty': 1000.0})
         inventory.action_done()
@@ -142,11 +146,11 @@ class TestPotentialQty(TransactionCase):
              'company_id': chicago_id,
              'location_id': self.wh_ch.lot_stock_id.id,
              'filter': 'partial'})
-        inventory.prepare_inventory()
+        inventory.action_start()
         self.env['stock.inventory.line'].create(
             {'inventory_id': inventory.id,
              'company_id': chicago_id,
-             'product_id': self.ref('product.product_product_15'),
+             'product_id': self.prod13.id,
              'location_id': self.wh_ch.lot_stock_id.id,
              'product_qty': 1000.0})
         inventory.action_done()
@@ -195,8 +199,8 @@ class TestPotentialQty(TransactionCase):
             'groups_id': [(4, self.ref('stock.group_stock_user'))],
         })
 
-        p1 = self.product_model.create({'name': 'Test P1'})
-        p2 = self.product_model.create({'name': 'Test P2'})
+        p1 = self.product_model.create({'name': 'Test P1', 'type': 'product'})
+        p2 = self.product_model.create({'name': 'Test P2', 'type': 'product'})
 
         self.create_simple_bom(p1, p2,
                                routing_id=self.ref('mrp.mrp_routing_0'))
@@ -204,7 +208,7 @@ class TestPotentialQty(TransactionCase):
 
         test_user_p1 = p1.sudo(test_user)
         # Test user doesn't have access to mrp_routing, can't compute potential
-        self.assertEqual(0, test_user_p1.potential_qty)
+        self.assertEqual(1, test_user_p1.potential_qty)
 
         test_user.groups_id = [(4, self.ref('mrp.group_mrp_user'))]
         self.assertEqual(1, test_user_p1.potential_qty)
@@ -220,13 +224,14 @@ class TestPotentialQty(TransactionCase):
             {'name': 'Receive CPUa8',
              'location_id': self.wh_main.lot_stock_id.id,
              'filter': 'partial'})
-        inventory.prepare_inventory()
+        inventory.action_start()
         self.env['stock.inventory.line'].create(
             {'inventory_id': inventory.id,
-             'product_id': self.ref('product.product_product_23'),
+             'product_id': self.prod22.id,
              'location_id': self.wh_main.lot_stock_id.id,
              'product_qty': 1000.0})
         inventory.action_done()
+        import pdb; pdb.set_trace()
         for i in [self.tmpl, self.var1, self.var2]:
             self.assertPotentialQty(
                 i, 0.0,
@@ -238,10 +243,10 @@ class TestPotentialQty(TransactionCase):
             {'name': 'components for 1st variant',
              'location_id': self.wh_main.lot_stock_id.id,
              'filter': 'partial'})
-        inventory.prepare_inventory()
+        inventory.action_start()
         self.env['stock.inventory.line'].create(
             {'inventory_id': inventory.id,
-             'product_id': self.ref('product.product_product_15'),
+             'product_id': self.prod13.id,
              'location_id': self.wh_main.lot_stock_id.id,
              'product_qty': 1000.0})
         inventory.action_done()
@@ -263,15 +268,15 @@ class TestPotentialQty(TransactionCase):
             {'name': 'components for 2nd variant',
              'location_id': self.wh_ch.lot_stock_id.id,
              'filter': 'partial'})
-        inventory.prepare_inventory()
+        inventory.action_start()
         self.env['stock.inventory.line'].create(
             {'inventory_id': inventory.id,
-             'product_id': self.ref('product.product_product_23'),
+             'product_id': self.prod22.id,
              'location_id': self.wh_ch.lot_stock_id.id,
              'product_qty': 1000.0})
         self.env['stock.inventory.line'].create(
             {'inventory_id': inventory.id,
-             'product_id': self.ref('product.product_product_18'),
+             'product_id': self.prod17.id,
              'location_id': self.wh_ch.lot_stock_id.id,
              'product_qty': 313.0})
         inventory.action_done()
@@ -308,14 +313,17 @@ class TestPotentialQty(TransactionCase):
 
         p1 = self.product_model.create({
             'name': 'Test product with BOM',
+            'type': 'product'
         })
 
         p2 = self.product_model.create({
             'name': 'Test sub product with BOM',
+            'type': 'product'
         })
 
         p3 = self.product_model.create({
-            'name': 'Test component'
+            'name': 'Test component',
+            'type': 'product'
         })
 
         bom_p1 = self.bom_model.create({
@@ -328,7 +336,7 @@ class TestPotentialQty(TransactionCase):
             'bom_id': bom_p1.id,
             'product_id': p3.id,
             'product_qty': 1,
-            'product_uom': self.ref('product.product_uom_dozen'),
+            'product_uom_id': self.ref('product.product_uom_dozen'),
         })
 
         # Two p2 which have a bom
@@ -336,7 +344,7 @@ class TestPotentialQty(TransactionCase):
             'bom_id': bom_p1.id,
             'product_id': p2.id,
             'product_qty': 2,
-            'product_uom': self.ref('product.product_uom_unit'),
+            'product_uom_id': self.ref('product.product_uom_unit'),
         })
 
         bom_p2 = self.bom_model.create({
@@ -350,7 +358,7 @@ class TestPotentialQty(TransactionCase):
             'bom_id': bom_p2.id,
             'product_id': p3.id,
             'product_qty': 2,
-            'product_uom': self.ref('product.product_uom_unit'),
+            'product_uom_id': self.ref('product.product_uom_unit'),
         })
 
         p1.refresh()
@@ -383,14 +391,17 @@ class TestPotentialQty(TransactionCase):
 
         p1 = self.product_model.create({
             'name': 'Test product with BOM',
+            'type': 'product'
         })
 
         p2 = self.product_model.create({
             'name': 'Test sub product with BOM',
+            'type': 'product'
         })
 
         p3 = self.product_model.create({
-            'name': 'Test component'
+            'name': 'Test component',
+            'type': 'product'
         })
 
         # A bom produce 2 dozen of P1
@@ -398,7 +409,7 @@ class TestPotentialQty(TransactionCase):
             'product_tmpl_id': p1.product_tmpl_id.id,
             'product_id': p1.id,
             'product_qty': 2,
-            'product_uom': self.ref('product.product_uom_dozen'),
+            'product_uom_id': self.ref('product.product_uom_dozen'),
         })
 
         # Need 5 p2 for that
@@ -406,8 +417,7 @@ class TestPotentialQty(TransactionCase):
             'bom_id': bom_p1.id,
             'product_id': p2.id,
             'product_qty': 5,
-            'product_uom': self.ref('product.product_uom_unit'),
-            'product_efficiency': 0.8,
+            'product_uom_id': self.ref('product.product_uom_unit'),
         })
 
         # Which need 1 dozen of P3
@@ -420,36 +430,45 @@ class TestPotentialQty(TransactionCase):
             'bom_id': bom_p2.id,
             'product_id': p3.id,
             'product_qty': 1,
-            'product_uom': self.ref('product.product_uom_dozen'),
+            'product_uom_id': self.ref('product.product_uom_dozen'),
         })
 
         p1.refresh()
         self.assertEqual(0, p1.potential_qty)
 
         self.create_inventory(p3.id, 60)
-
         p1.refresh()
-        self.assertEqual(0, p1.potential_qty)
-
-        # Need 5 * 1 dozen => 60
-        # But 80% lost each dozen, need 3 more by dozen => 60 + 5 *3 => 75
-        self.create_inventory(p3.id, 75)
-
-        p1.refresh()
-        self.assertEqual(24, p1.potential_qty)
+        self.assertEqual(24.0, p1.potential_qty)
 
     def test_component_stock_choice(self):
         # Test to change component stock for compute BOM stock
 
         # Get a demo product with outgoing move (qty: 3)
-        imac = self.browse_ref('product.product_product_8')
+        imac = self.browse_ref('stock_available_mrp.mrp_product_product_imac')
 
         # Set on hand qty
+        lot1 = self.env['stock.production.lot'].create({
+            'name': 'lot1',
+            'product_id': imac.id,
+        })
         self.create_inventory(imac.id, 3)
+        stock_move = self.env['stock.move'].create({
+            'name': 'stock_move',
+            'location_id': self.wh_main.lot_stock_id.id,
+            'location_dest_id': self.env.ref('stock.stock_location_customers').id,
+            'product_id': imac.id,
+            'product_uom': self.ref('product.product_uom_unit'),
+            'product_uom_qty': 3.0,
+            'picking_type_id': self.env.ref('stock.picking_type_in').id,
+        })
+        stock_move._action_confirm()
+        stock_move._action_assign()
+
 
         # Create a product with BOM
         p1 = self.product_model.create({
             'name': 'Test product with BOM',
+            'type': 'product',
         })
         bom_p1 = self.bom_model.create({
             'product_tmpl_id': p1.product_tmpl_id.id,
@@ -480,6 +499,8 @@ class TestPotentialQty(TransactionCase):
         # If iMac has a Bom and can be manufactured
         imac_component = self.product_model.create({
             'name': 'iMac component',
+            'type': 'product',
+
         })
         self.create_inventory(imac_component.id, 5)
 
@@ -513,9 +534,9 @@ class TestPotentialQty(TransactionCase):
         # a recordset with multiple products
         # Recursive compute is not working
 
-        p1 = self.product_model.create({'name': 'Test P1'})
-        p2 = self.product_model.create({'name': 'Test P2'})
-        p3 = self.product_model.create({'name': 'Test P3'})
+        p1 = self.product_model.create({'name': 'Test P1', 'type': 'product'})
+        p2 = self.product_model.create({'name': 'Test P2', 'type': 'product'})
+        p3 = self.product_model.create({'name': 'Test P3', 'type': 'product'})
 
         self.config.set_param('stock_available_mrp_based_on',
                               'immediately_usable_qty')

@@ -6,7 +6,7 @@ from collections import Counter
 from odoo import models, fields, api
 from odoo.addons import decimal_precision as dp
 
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, UserError
 
 
 class ProductProduct(models.Model):
@@ -15,7 +15,7 @@ class ProductProduct(models.Model):
     potential_qty = fields.Float(
         compute='_get_potential_qty',
         type='float',
-        digits_compute=dp.get_precision('Product Unit of Measure'),
+        digits=dp.get_precision('Product Unit of Measure'),
         string='Potential',
         help="Quantity of this Product that could be produced using "
              "the materials already at hand.")
@@ -44,14 +44,11 @@ class ProductProduct(models.Model):
         """Compute the potential qty based on the available components."""
         bom_obj = self.env['mrp.bom']
         uom_obj = self.env['product.uom']
-
         for product in self:
-            bom_id = bom_obj._bom_find(product_id=product.id)
-            if not bom_id:
+            bom = bom_obj._bom_find(product=product)
+            if not bom:
                 product.potential_qty = 0.0
                 continue
-
-            bom = bom_obj.browse(bom_id)
 
             # Need by product (same product can be in many BOM lines/levels)
             try:
@@ -60,12 +57,12 @@ class ProductProduct(models.Model):
                 # If user doesn't have access to BOM
                 # he can't see potential_qty
                 component_needs = None
-
             if not component_needs:
                 # The BoM has no line we can use
                 product.potential_qty = 0.0
 
             else:
+                import pdb; pdb.set_trace()
                 # Find the lowest quantity we can make with the stock at hand
                 components_potential_qty = min(
                     [self._get_component_qty(component) // need
@@ -73,8 +70,7 @@ class ProductProduct(models.Model):
                 )
 
                 # Compute with bom quantity
-                bom_qty = uom_obj._compute_qty_obj(
-                    bom.product_uom,
+                bom_qty = bom.product_uom_id._compute_quantity(
                     bom.product_qty,
                     bom.product_tmpl_id.uom_id
                 )
@@ -86,7 +82,7 @@ class ProductProduct(models.Model):
         :type component: product_product
         :rtype: float
         """
-        icp = self.env['ir.config_parameter']
+        icp = self.env['ir.config_parameter'].sudo()
         stock_available_mrp_based_on = icp.get_param(
             'stock_available_mrp_based_on', 'qty_available'
         )
@@ -100,20 +96,20 @@ class ProductProduct(models.Model):
         :type bom: mrp_bom
         :rtype: collections.Counter
         """
-        bom_obj = self.env['mrp.bom']
-        uom_obj = self.env['product.uom']
-        product_obj = self.env['product.product']
-
         needs = Counter()
-        for bom_component in bom_obj._bom_explode(bom, product, 1.0)[0]:
-            product_uom = uom_obj.browse(bom_component['product_uom'])
-            component = product_obj.browse(bom_component['product_id'])
-
-            component_qty = uom_obj._compute_qty_obj(
-                product_uom,
-                bom_component['product_qty'],
-                component.uom_id,
-            )
+        for bom_component in bom.explode(product, 1.0)[1]:
+            product_uom = bom_component[1]['product'].uom_id
+            component = bom_component[0]['product_id']
+            try:
+                component_qty = bom_component[0].product_uom_id._compute_quantity(
+                    bom_component[1]['original_qty'],
+                    component.uom_id
+                )
+            except UserError:
+                # This occurs, when we have components 
+                # which are in a different cateogry.
+                continue
+            component_qty = component_qty * bom_component[1]['qty']
             needs += Counter(
                 {component: component_qty}
             )

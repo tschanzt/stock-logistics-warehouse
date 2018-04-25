@@ -14,8 +14,7 @@
                             class="oe_stat_button" icon="fa-building-o">
                         <div class="o_form_field o_stat_info">
                             <field name="potential_qty"
-                                   widget="statinfo" nolabel="1"/>
-                            <span class="o_stat_text">Potential</span>
+                                   widget="statinfo" />
                         </div>
                     </button>
                 </xpath>

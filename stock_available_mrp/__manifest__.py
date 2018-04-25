@@ -14,8 +14,8 @@
         'views/product_template_view.xml',
     ],
     'demo': [
+        'demo/mrp_data.xml',
         'demo/mrp_bom.yml',
     ],
     'license': 'AGPL-3',
-    'installable': False,
 }
