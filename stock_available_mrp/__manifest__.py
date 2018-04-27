@@ -5,6 +5,7 @@
     'version': '11.0.1.0.0',
     "author": "Numérigraphe,"
               "Odoo Community Association (OCA)",
+    'website': 'https://github.com/OCA/stock-logistics-warehouse',
     'category': 'Hidden',
     'depends': [
         'stock_available',

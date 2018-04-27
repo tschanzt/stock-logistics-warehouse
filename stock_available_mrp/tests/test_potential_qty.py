@@ -10,7 +10,9 @@ class TestPotentialQty(TransactionCase):
 
     def setUp(self):
         super(TestPotentialQty, self).setUp()
-        self.product_model = self.env["product.product"]
+        self.product_model = self.env["product.product"].with_context(
+            tracking_disable=True
+        )
         self.bom_model = self.env["mrp.bom"]
         self.bom_line_model = self.env["mrp.bom.line"]
         self.stock_quant_model = self.env["stock.quant"]
@@ -191,13 +193,14 @@ class TestPotentialQty(TransactionCase):
             test_user_tmpl, 1000.0, '')
 
     def test_group_mrp_missing(self):
-        test_user = self.env['res.users'].create({
-            'name': 'test_demo',
-            'login': 'test_demo',
-            'company_id': self.ref('base.main_company'),
-            'company_ids': [(4, self.ref('base.main_company'))],
-            'groups_id': [(4, self.ref('stock.group_stock_user'))],
-        })
+        test_user = self.env['res.users'].with_context(
+            tracking_disable=True, no_reset_password=True).create({
+                'name': 'test_demo',
+                'login': 'test_demo',
+                'company_id': self.ref('base.main_company'),
+                'company_ids': [(4, self.ref('base.main_company'))],
+                'groups_id': [(4, self.ref('stock.group_stock_user'))],
+            })
 
         p1 = self.product_model.create({'name': 'Test P1', 'type': 'product'})
         p2 = self.product_model.create({'name': 'Test P2', 'type': 'product'})
