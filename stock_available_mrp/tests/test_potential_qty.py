@@ -312,27 +312,22 @@ class TestPotentialQty(TransactionCase):
 
     def test_multi_unit_recursive_bom(self):
         # Test multi-level and multi-units BOM
-
         p1 = self.product_model.create({
             'name': 'Test product with BOM',
             'type': 'product'
         })
-
         p2 = self.product_model.create({
             'name': 'Test sub product with BOM',
             'type': 'product'
         })
-
         p3 = self.product_model.create({
             'name': 'Test component',
             'type': 'product'
         })
-
         bom_p1 = self.bom_model.create({
             'product_tmpl_id': p1.product_tmpl_id.id,
             'product_id': p1.id,
         })
-
         # 1 dozen of component
         self.bom_line_model.create({
             'bom_id': bom_p1.id,
@@ -340,7 +335,6 @@ class TestPotentialQty(TransactionCase):
             'product_qty': 1,
             'product_uom_id': self.ref('product.product_uom_dozen'),
         })
-
         # Two p2 which have a bom
         self.bom_line_model.create({
             'bom_id': bom_p1.id,
@@ -348,13 +342,11 @@ class TestPotentialQty(TransactionCase):
             'product_qty': 2,
             'product_uom_id': self.ref('product.product_uom_unit'),
         })
-
         bom_p2 = self.bom_model.create({
             'product_tmpl_id': p2.product_tmpl_id.id,
             'product_id': p2.id,
             'type': 'phantom',
         })
-
         # p2 need 2 unit of component
         self.bom_line_model.create({
             'bom_id': bom_p2.id,
@@ -362,14 +354,11 @@ class TestPotentialQty(TransactionCase):
             'product_qty': 2,
             'product_uom_id': self.ref('product.product_uom_unit'),
         })
-
         p1.invalidate_cache()
-
         # Need a least 1 dozen + 2 * 2 = 16 units for one P1
         self.assertEqual(0, p1.potential_qty)
 
         self.create_inventory(p3.id, 1)
-
         p1.invalidate_cache()
         self.assertEqual(0, p1.potential_qty)
 
@@ -395,12 +384,10 @@ class TestPotentialQty(TransactionCase):
             'name': 'Test product with BOM',
             'type': 'product'
         })
-
         p2 = self.product_model.create({
             'name': 'Test sub product with BOM',
             'type': 'product'
         })
-
         p3 = self.product_model.create({
             'name': 'Test component',
             'type': 'product'
@@ -413,7 +400,6 @@ class TestPotentialQty(TransactionCase):
             'product_qty': 2,
             'product_uom_id': self.ref('product.product_uom_dozen'),
         })
-
         # Need 5 p2 for that
         self.bom_line_model.create({
             'bom_id': bom_p1.id,
@@ -472,7 +458,6 @@ class TestPotentialQty(TransactionCase):
             'product_qty': 1,
             'product_uom': self.ref('product.product_uom_unit'),
         })
-
         # Need 1 iMac for that
         self.bom_line_model.create({
             'bom_id': bom_p1.id,
@@ -480,7 +465,6 @@ class TestPotentialQty(TransactionCase):
             'product_qty': 1,
             'product_uom': self.ref('product.product_uom_unit'),
         })
-
         # Default component is qty_available
         p1.invalidate_cache()
         self.assertEqual(3.0, p1.potential_qty)
@@ -499,7 +483,6 @@ class TestPotentialQty(TransactionCase):
 
         })
         self.create_inventory(imac_component.id, 5)
-
         imac_bom = self.bom_model.create({
             'product_tmpl_id': imac.product_tmpl_id.id,
             'product_id': imac.id,
@@ -507,7 +490,6 @@ class TestPotentialQty(TransactionCase):
             'product_uom': self.ref('product.product_uom_unit'),
             'type': 'phantom',
         })
-
         # Need 1 imac_component for iMac
         self.bom_line_model.create({
             'bom_id': imac_bom.id,
@@ -515,7 +497,6 @@ class TestPotentialQty(TransactionCase):
             'product_qty': 1,
             'product_uom': self.ref('product.product_uom_unit'),
         })
-
         p1.invalidate_cache()
         self.assertEqual(5.0, p1.potential_qty)
 
@@ -541,11 +522,8 @@ class TestPotentialQty(TransactionCase):
         self.create_simple_bom(p1, p2)
         # P2 need one P3
         self.create_simple_bom(p2, p3)
-
         self.create_inventory(p3.id, 3)
-
         self.product_model.invalidate_cache()
-
         products = self.product_model.search(
             [('id', 'in', [p1.id, p2.id, p3.id])]
         )
