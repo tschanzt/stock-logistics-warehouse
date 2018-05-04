@@ -11,6 +11,10 @@ class ProductProduct(models.Model):
     # Needed for fields dependencies
     # When self.potential_qty is compute, we want to force the ORM
     # to compute all the components potential_qty too.
+    #
+    # Since component_ids isn't stored and is never accessed it isn't actually
+    # calculated but it allows us to compute children first since if it exists
+    # we get marked as recursive when computing fields.
     component_ids = fields.Many2many(
         comodel_name='product.product',
         compute='_compute_component_ids',
