@@ -54,7 +54,7 @@ class ProductProduct(models.Model):
             component_needs = None
         if not component_needs:
             # The BoM has no line we can use
-            self.potential_qty = 0.0
+            return 0.0
 
         else:
             # Find the lowest quantity we can make with the stock at hand
@@ -111,7 +111,6 @@ class ProductProduct(models.Model):
         return needs
 
     @api.multi
-    @api.depends('potential_qty')
     def _compute_component_ids(self):
         """ Compute component_ids by getting all the components for
         this product.
@@ -120,5 +119,7 @@ class ProductProduct(models.Model):
         for product in self:
             bom = bom_obj._bom_find(product=product)
             if bom:
+                components = self.env['product.product']
                 for bom_component in bom.explode(product, 1.0)[1]:
-                    product.component_ids |= bom_component[0]['product_id']
+                    components |= bom_component[0]['product_id']
+                product.component_ids = components
