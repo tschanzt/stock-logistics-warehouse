@@ -8,15 +8,15 @@ from odoo.exceptions import AccessError, UserError
 class ProductProduct(models.Model):
     _inherit = 'product.product'
 
-# Needed for fields dependencies
-# As self.potential_qty is computed, we want to force the ORM to compute
-# the potential_qty of all the components of the actual product first.
-# Although component_ids isn't stored,
-# is never accessed and isn't actually computed, we need this field to ensure
-# the dependency chain of _compute_potential_qty is correct.
-# with the field potential_qty being marked as recursive.
-# (cf setup_triggers
-# https://github.com/odoo/odoo/blob/11.0/odoo/fields.py#L684)
+    # Needed for fields dependencies
+    # As self.potential_qty is computed, we want to force the ORM to compute
+    # the potential_qty of all the components of the actual product first.
+    # Although component_ids isn't stored,
+    # is never accessed and isn't actually computed, we need this field
+    # to ensure the dependency chain of _compute_potential_qty is correct.
+    # with the field potential_qty being marked as recursive.
+    # (cf setup_triggers
+    # https://github.com/odoo/odoo/blob/11.0/odoo/fields.py#L684)
     component_ids = fields.Many2many(
         comodel_name='product.product',
         compute='_compute_component_ids',

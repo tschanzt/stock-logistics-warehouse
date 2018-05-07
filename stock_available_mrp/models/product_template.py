@@ -22,7 +22,7 @@ class ProductTemplate(models.Model):
         for tmpl in self:
             if not tmpl.product_variant_ids:
                 continue
-            # immediately_usable_qty of the product iincludes the potential
+            # immediately_usable_qty of the product includes the potential
             # we can't use it otherwise we overestimate.
             avail = max(
                 [v.virtual_available for v in tmpl.product_variant_ids])
