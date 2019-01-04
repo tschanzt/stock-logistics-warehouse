@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # © 2014 Numérigraphe SARL
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
@@ -17,7 +16,14 @@ class TestPotentialQty(TransactionCase):
         self.bom_line_model = self.env["mrp.bom.line"]
         self.stock_quant_model = self.env["stock.quant"]
         self.config = self.env['ir.config_parameter']
+        self.location = self.env['stock.location']
+        # Get the warehouses
+        self.wh_main = self.browse_ref('stock.warehouse0')
+        self.wh_ch = self.browse_ref('stock.stock_warehouse_shop0')
 
+        # We need to compute parent_left and parent_right of the locations as
+        # they are used to compute qty_available of the product.
+        self.location._parent_store_compute()
         self.setup_demo_data()
 
     def setup_demo_data(self):
@@ -26,6 +32,7 @@ class TestPotentialQty(TransactionCase):
             'mrp.product_product_build_kit_product_template')
         #  First variant
         self.var1 = self.browse_ref('mrp.product_product_build_kit')
+        self.var1.type = 'product'
         #  Second variant
         self.var2 = self.browse_ref(
             'stock_available_mrp.product_kit_1a')
@@ -46,10 +53,9 @@ class TestPotentialQty(TransactionCase):
                  'location_id': self.ref('stock.stock_location_locations'),
                  'filter': 'product',
                  'product_id': component_id})
-            inventory.prepare_inventory()
-            inventory.reset_real_qty()
             inventory.action_done()
 
+        self.product_model.invalidate_cache()
         #  A product without a BoM
         self.product_wo_bom = self.browse_ref('product.product_product_11')
 
@@ -60,9 +66,6 @@ class TestPotentialQty(TransactionCase):
                                                self.var2,
                                                self.product_wo_bom]}
 
-        # Get the warehouses
-        self.wh_main = self.browse_ref('stock.warehouse0')
-        self.wh_ch = self.browse_ref('stock.stock_warehouse_shop0')
 
     def create_inventory(self, product_id, qty, location_id=None):
         if location_id is None:
@@ -73,8 +76,7 @@ class TestPotentialQty(TransactionCase):
             'location_id': location_id,
             'filter': 'partial'
         })
-        inventory.prepare_inventory()
-
+        inventory.action_start()
         self.env['stock.inventory.line'].create({
             'inventory_id': inventory.id,
             'product_id': product_id,
@@ -124,7 +126,7 @@ class TestPotentialQty(TransactionCase):
              'company_id': chicago_id,
              'location_id': self.wh_ch.lot_stock_id.id,
              'filter': 'partial'})
-        inventory.prepare_inventory()
+        inventory.action_start()
         self.env['stock.inventory.line'].create(
             {'inventory_id': inventory.id,
              'company_id': chicago_id,
@@ -139,7 +141,7 @@ class TestPotentialQty(TransactionCase):
              'company_id': chicago_id,
              'location_id': self.wh_ch.lot_stock_id.id,
              'filter': 'partial'})
-        inventory.prepare_inventory()
+        inventory.action_start()
         self.env['stock.inventory.line'].create(
             {'inventory_id': inventory.id,
              'company_id': chicago_id,
@@ -184,6 +186,7 @@ class TestPotentialQty(TransactionCase):
             test_user_tmpl, 1000.0, '')
 
     def test_potential_qty(self):
+        import pdb; pdb.set_trace()
         for i in [self.tmpl, self.var1, self.var2]:
             self.assertPotentialQty(
                 i, 0.0,
@@ -194,7 +197,7 @@ class TestPotentialQty(TransactionCase):
             {'name': 'Receive Mouses',
              'location_id': self.wh_main.lot_stock_id.id,
              'filter': 'partial'})
-        inventory.prepare_inventory()
+        inventory.action_start()
         self.env['stock.inventory.line'].create(
             {'inventory_id': inventory.id,
              'product_id': self.ref('product.product_product_12'),
@@ -212,7 +215,7 @@ class TestPotentialQty(TransactionCase):
             {'name': 'components for 1st variant',
              'location_id': self.wh_main.lot_stock_id.id,
              'filter': 'partial'})
-        inventory.prepare_inventory()
+        inventory.action_start()
         self.env['stock.inventory.line'].create(
             {'inventory_id': inventory.id,
              'product_id': self.ref(
@@ -236,7 +239,7 @@ class TestPotentialQty(TransactionCase):
             {'name': 'components for 2nd variant',
              'location_id': self.wh_ch.lot_stock_id.id,
              'filter': 'partial'})
-        inventory.prepare_inventory()
+        inventory.action_start()
         self.env['stock.inventory.line'].create(
             {'inventory_id': inventory.id,
              'product_id': self.ref('product.product_product_12'),
@@ -289,7 +292,8 @@ class TestPotentialQty(TransactionCase):
         })
 
         p3 = self.product_model.create({
-            'name': 'Test component'
+            'name': 'Test component',
+            'type': 'product'
         })
 
         bom_p1 = self.bom_model.create({
@@ -389,6 +393,7 @@ class TestPotentialQty(TransactionCase):
         # If iMac has a Bom and can be manufactured
         component = self.product_model.create({
             'name': 'component',
+            'type': 'product'
         })
         self.create_inventory(component.id, 5)
 
@@ -415,14 +420,14 @@ class TestPotentialQty(TransactionCase):
         p1.refresh()
         self.assertEqual(5.0, p1.potential_qty)
 
-    def test_potential_qty__list(self):
+    def test_potential_qty_list(self):
         # Try to highlight a bug when _get_potential_qty is called on
         # a recordset with multiple products
         # Recursive compute is not working
 
         p1 = self.product_model.create({'name': 'Test P1'})
         p2 = self.product_model.create({'name': 'Test P2'})
-        p3 = self.product_model.create({'name': 'Test P3'})
+        p3 = self.product_model.create({'name': 'Test P3', 'type':'product'})
 
         self.config.set_param('stock_available_mrp_based_on',
                               'immediately_usable_qty')

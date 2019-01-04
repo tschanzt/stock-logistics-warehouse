@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # © 2014 Numérigraphe SARL
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
@@ -77,7 +76,7 @@ class ProductProduct(models.Model):
 
         # Compute stock for product components.
         # {'productid': {field_name: qty}}
-        if res and stock_available_mrp_based_on in res.values()[0]:
+        if res and stock_available_mrp_based_on in list(res.values())[0]:
             # If the qty is computed by the same method use it to avoid
             # stressing the cache
             component_qties, _ = \
